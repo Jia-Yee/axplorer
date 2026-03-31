@@ -10,3 +10,5 @@ checkpoint/
 .venv
 
 .pyre/
+venv_axplorer/bin/*
+venv_axplorer/lib/*
