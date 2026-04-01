@@ -105,6 +105,14 @@ def _do_score(d, always_search: bool = False, redeem_only: bool = False, pars=No
         d._update_class_params(pars)
     d.calc_features()
     d.calc_score()
+    
+    # DEBUG: Log why samples are invalid
+    if d.score < 0:
+        if hasattr(d, 'diameter') and hasattr(d, 'd'):
+            logger.debug(f"Invalid sample: diameter={d.diameter}, expected d={d.d}, edges={d.data.sum().item()//2}")
+        else:
+            logger.debug(f"Invalid sample: score={d.score}")
+    
     invalid = 1 if d.score < 0 else 0
     if always_search:
         d.local_search(improve_with_local_search=True)
@@ -122,6 +130,11 @@ def do_score(data, args, executor=None):
     """
     n_invalid = 0
     processed_data = []
+    
+    # Handle empty data list
+    if len(data) == 0:
+        return [], 0, []
+    
     if not args.process_pool:
         for d in data:
             # warning, change the original list

@@ -95,20 +95,40 @@ class SparseTokenizerSingleInteger(Tokenizer):
         # remove the first token because it's always BOS
         token_seq_to_decode = token_seq_to_decode[1:]
         try:
-            datapoint = self.dataclass(N=self.N)
-            for token in token_seq_to_decode:
+            # For HypercubeDiameterDataPoint, N is vertex_count, need to convert to dimension
+            if hasattr(self, '_is_hypercube') and self._is_hypercube:
+                # Convert vertex_count back to dimension: d = log2(vertex_count)
+                import math
+                d = int(math.log2(self.N))
+                datapoint = self.dataclass(d)  # Pass as positional arg 'd'
+            else:
+                datapoint = self.dataclass(N=self.N)
+            
+            for i, token in enumerate(token_seq_to_decode):
+                if token not in self.itos:
+                    logger.debug(f"Decode fail: token {token} at pos {i} not in vocab (size={len(self.itos)})")
+                    return None
                 el = self.itos[token]
                 if el in self.extra_symbols:
                     break
                 if self.are_coordinates_symmetric:
                     if len(set(el)) != len(el):
+                        logger.debug(f"Decode fail: self-loop at token {i}: {el}")
                         return None
                     for permutation in permutations(el):
                         datapoint.data[permutation] = 1
                 else:
                     datapoint.data[el] = 1
+            
+            # Compute score and features for the decoded datapoint
+            if hasattr(datapoint, 'calc_score'):
+                datapoint.calc_score()
+            if hasattr(datapoint, 'calc_features'):
+                datapoint.calc_features()
+                
             return datapoint
-        except:
+        except Exception as e:
+            logger.debug(f"Decode exception: {type(e).__name__}: {e}")
             return None
 
 
