@@ -188,6 +188,67 @@ The full list of flags for the model architecture and training parameters can be
 | Square-free graphs | Maximize edges in a graph with no 4-cycles | `square` |
 | Isosceles-free point sets | Maximize points in a grid [N]^2 with no isosceles triangles | `isosceles` |
 | Sphere point sets | Maximize points in a grid [N]^3 with no 5 points on a sphere | `sphere` |
+| Hypercube diameter | Find minimum edge spanning subgraph of d-dimensional hypercube with diameter d | `hypercube` |
+
+## 🖥️ Web UI Dashboard
+
+Axplorer includes an interactive web dashboard for monitoring training progress and managing experiments.
+
+### Quick Start
+
+```bash
+# Activate your environment
+conda activate env_axplorer
+
+# Launch the web UI
+python ui_dashboard.py
+
+# Open browser to http://localhost:7860
+```
+
+### Features
+
+#### 📈 Training Monitor
+- **Real-time Metrics**: View live training metrics including loss, best score, and test score
+- **Interactive Charts**: Visualize training curves for average score, median score, max score, and top 1% percentile
+- **Resource Monitoring**: Track CPU and memory usage during training
+
+#### 📁 Experiment Manager
+- **Browse All Experiments**: Automatically scan and display all experiments in `checkpoint/` directory
+- **Experiment Details**: View final scores, status (completed/running), and creation time
+- **Log Viewer**: Inspect training logs directly from the UI
+- **Visualization**: Generate training charts with a single click
+
+#### 🔧 Configuration Management
+- **Parameter Tuning**: Adjust temperature, batch size, and other hyperparameters
+- **Resume Training**: Easily restart interrupted experiments
+- **Data Generation**: Configure data generation parameters
+
+### Usage Example
+
+1. **View Latest Training**
+   - Navigate to "📈 Training Monitor" tab
+   - Click "📊 Generate Training Chart"
+   - See real-time visualization of your latest experiment
+
+2. **Manage Experiments**
+   - Switch to "📁 Experiment Manager" tab
+   - Click "🔄 Refresh Experiment List"
+   - Select any experiment from the table
+   - Click "👁️ View Log" or "📊 Generate Chart"
+
+3. **Compare Results**
+   - Use the experiment table to compare final scores across different runs
+   - Identify best-performing configurations at a glance
+
+### Troubleshooting
+
+If the UI doesn't show your experiments:
+- Ensure experiments are stored in `checkpoint/<exp_name>/<exp_id>/` format
+- Check that `train.log` or `metrics.txt` files exist in experiment directories
+- Click "🔄 Refresh" to rescan the checkpoint directory
+
+For detailed documentation, see [WEB_UI_FIXED.md](WEB_UI_FIXED.md) and [UI_USAGE_GUIDE.md](UI_USAGE_GUIDE.md).
 
 ## License
 
