@@ -103,22 +103,25 @@ def _do_score(d, always_search: bool = False, redeem_only: bool = False, pars=No
     invalid = 0
     if pars is not None:
         d._update_class_params(pars)
-    d.calc_features()
+    
+    # ✅ OPTIMIZED: Compute score first, only compute features for valid samples
     d.calc_score()
     
-    # DEBUG: Log why samples are invalid
-    if d.score < 0:
-        if hasattr(d, 'diameter') and hasattr(d, 'd'):
-            logger.debug(f"Invalid sample: diameter={d.diameter}, expected d={d.d}, edges={d.data.sum().item()//2}")
-        else:
-            logger.debug(f"Invalid sample: score={d.score}")
+    # Only compute features if sample is valid AND we need uniqueness checking
+    if d.score >= 0:
+        if hasattr(d, 'calc_features'):
+            d.calc_features()
+    else:
+        # Invalid samples don't need features (they'll be filtered out anyway)
+        d.features = ""
+        invalid = 1
     
-    invalid = 1 if d.score < 0 else 0
+    # Local search if needed
     if always_search:
         d.local_search(improve_with_local_search=True)
-    elif invalid:
-        if redeem_only:
-            d.local_search(improve_with_local_search=False)
+    elif invalid and redeem_only:
+        d.local_search(improve_with_local_search=False)
+    
     return (d, invalid)
 
 
@@ -127,6 +130,8 @@ def do_score(data, args, executor=None):
     Compute the score of a list of data.
     Can be parallelized with process_pool.
     Returns only valid items (score >= 0).
+    
+    Optimized: Automatically use multiprocessing if executor is provided.
     """
     n_invalid = 0
     processed_data = []
@@ -135,26 +140,21 @@ def do_score(data, args, executor=None):
     if len(data) == 0:
         return [], 0, []
     
-    if not args.process_pool:
-        for d in data:
-            # warning, change the original list
-            res, invalid = _do_score(d, args.always_search, args.redeem_only)
-            n_invalid += invalid
-            processed_data.append(res)
-    else:
+    # ✅ OPTIMIZED: Use executor if available, otherwise sequential
+    if executor is not None:
+        # Parallel execution with ProcessPoolExecutor
         pars = data[0]._save_class_params()
-
-        chunksize = max(1, len(data) // (args.num_workers * 32))
-
-        if executor is not None:
-            for d, invalid in executor.map(_do_score, data, repeat(args.always_search), repeat(args.redeem_only), repeat(pars), chunksize=chunksize):
-                processed_data.append(d)
-                n_invalid += invalid
-        else:
-            with ProcessPoolExecutor(max_workers=args.num_workers) as ex:
-                for d, invalid in ex.map(_do_score, data, repeat(args.always_search), repeat(args.redeem_only), repeat(pars), chunksize=chunksize):
-                    processed_data.append(d)
-                    n_invalid += invalid
+        chunksize = max(1, len(data) // (executor._max_workers * 32))
+        
+        for d, invalid in executor.map(_do_score, data, repeat(args.always_search), repeat(args.redeem_only), repeat(pars), chunksize=chunksize):
+            processed_data.append(d)
+            n_invalid += invalid
+    else:
+        # Sequential execution (fallback)
+        for d in data:
+            res, invalid = _do_score(d, args.always_search, args.redeem_only)
+            processed_data.append(res)
+            n_invalid += invalid
 
     valid_data = [d for d in processed_data if d.score >= 0]
 

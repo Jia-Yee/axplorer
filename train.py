@@ -50,6 +50,10 @@ def get_parser():
     parser.add_argument("--batch_size", type=int, default=32, help="batch size during optimization")
     parser.add_argument("--learning_rate", type=float, default=5e-4, help="learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="weight decay")
+    # VLM-style optimizations
+    parser.add_argument("--accumulation_steps", type=int, default=1, help="gradient accumulation steps")
+    parser.add_argument("--grad_clip", type=float, default=1.0, help="gradient clipping threshold")
+    
     # evaluation against known "good sequences"
     parser.add_argument("--gen_batch_size", type=int, default=1000, help="generation batch size")
     parser.add_argument("--temperature", type=float, default=1.0, help="temperature")
@@ -57,6 +61,10 @@ def get_parser():
     parser.add_argument("--inc_temp", type=float, default=0.0, help="temperature")
     parser.add_argument("--keep_only_unique", type=bool_flag, default="true", help="keep only unique data")
     parser.add_argument("--save_best", type=bool_flag, default="false", help="save best model based on test loss")
+    
+    # GPU acceleration
+    parser.add_argument("--use_amp", type=bool_flag, default="false", help="use automatic mixed precision for faster training")
+    parser.add_argument("--dtype", type=str, default="float16", help="mixed precision dtype (float16/bfloat16)")
 
     # path and ports
     parser.add_argument("--dump_path", type=str, default="checkpoint", help="Experiment dump path")
@@ -109,6 +117,14 @@ if __name__ == "__main__":
     model = Transformer(args, stoi["PAD"], stoi["EOS"])
     model.to(args.device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay, betas=(0.9, 0.99), eps=1e-8, fused=fused)
+    
+    # Initialize AMP GradScaler if enabled
+    scaler = None
+    if args.use_amp and args.device == "cuda":
+        from torch.cuda.amp import GradScaler
+        scaler = GradScaler(init_scale=2.**10)
+        logger.info(f"✅ AMP enabled with dtype={args.dtype}, initial scale={scaler.get_scale()}")
+    
     reload_model_optimizer(args, model, optimizer)
 
     train_set, test_set = load_initial_data(args, classname)
@@ -166,7 +182,7 @@ if __name__ == "__main__":
             )
 
         batch_loader = InfiniteDataLoader(train_dataset, batch_size=args.batch_size, pin_memory=True, num_workers=args.num_workers)
-        best_loss = train(model, args, batch_loader, optimizer, test_dataset, current_best_loss=best_loss)
+        best_loss, scaler = train(model, args, batch_loader, optimizer, test_dataset, current_best_loss=best_loss, scaler=scaler)
         log_resources(f"Epoch {epoch} AFTER_TRAIN")
         force_release_memory()
 

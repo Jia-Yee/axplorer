@@ -75,7 +75,13 @@ def sample_and_score(model, args, stoi, itos, env, temp, temp_span=0):
     all_processed_data = []
     results_lock = threading.Lock()
 
-    executor = ProcessPoolExecutor(max_workers=min(20, args.num_workers))
+    # ✅ OPTIMIZED: Enable multiprocessing for scoring
+    # Use process pool if available, otherwise fall back to sequential
+    executor = None
+    if args.process_pool:
+        num_workers = args.num_workers if args.num_workers > 0 else min(8, os.cpu_count() or 4)
+        executor = ProcessPoolExecutor(max_workers=num_workers)
+        logger.info(f"Using ProcessPoolExecutor with {num_workers} workers for sampling")
 
     def process_batches(batches):
         nonlocal total_invalid

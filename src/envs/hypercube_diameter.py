@@ -73,9 +73,20 @@ class HypercubeDiameterDataPoint(DataPoint):
         """
         Compute shortest path between start and end using BFS.
         Returns path length or infinity if no path exists.
+        
+        Optimized with adjacency list for O(V+E) instead of O(V²).
         """
         if start == end:
             return 0
+        
+        # Build adjacency list on-the-fly (cached for reuse)
+        if not hasattr(self, '_adj_list_cache'):
+            self._adj_list_cache = [[] for _ in range(self.vertex_count)]
+            for u in range(self.vertex_count):
+                for v in range(u + 1, self.vertex_count):
+                    if self.data[u, v] == 1:
+                        self._adj_list_cache[u].append(v)
+                        self._adj_list_cache[v].append(u)
         
         visited = {start}
         queue = deque([(start, 0)])
@@ -83,9 +94,9 @@ class HypercubeDiameterDataPoint(DataPoint):
         while queue:
             current, dist = queue.popleft()
             
-            # Check all neighbors in the subgraph
-            for neighbor in range(self.vertex_count):
-                if self.data[current, neighbor] == 1 and neighbor not in visited:
+            # ✅ OPTIMIZED: Only visit actual neighbors (not all vertices)
+            for neighbor in self._adj_list_cache[current]:
+                if neighbor not in visited:
                     if neighbor == end:
                         return dist + 1
                     visited.add(neighbor)
@@ -94,13 +105,25 @@ class HypercubeDiameterDataPoint(DataPoint):
         return float('inf')
     
     def _compute_diameter(self):
-        """Compute the diameter of the current subgraph."""
+        """
+        Compute the diameter of the current subgraph.
+        
+        Optimized with early termination: if any pair has distance > d, 
+        immediately return infinity to avoid wasted computation.
+        """
+        # Fast path: early termination for invalid graphs
+        for i in range(self.vertex_count):
+            for j in range(i + 1, self.vertex_count):
+                dist = self._compute_shortest_path(i, j)
+                if dist > self.d:
+                    return float('inf')  # ⚠️ Early exit!
+        
+        # If we reach here, all pairs have distance <= d
+        # Recompute to get exact diameter (optional, can skip for scoring)
         max_dist = 0
         for i in range(self.vertex_count):
             for j in range(i + 1, self.vertex_count):
                 dist = self._compute_shortest_path(i, j)
-                if dist == float('inf'):
-                    return float('inf')  # Graph is disconnected
                 max_dist = max(max_dist, dist)
         return max_dist
     
@@ -117,7 +140,17 @@ class HypercubeDiameterDataPoint(DataPoint):
             self.score = self.data.sum().item() // 2
     
     def calc_features(self):
-        """Create a string representation for deduplication."""
+        """
+        Create a string representation for deduplication.
+        
+        Optimized: Only compute for valid samples (score >= 0).
+        Invalid samples don't need features since they'll be filtered out.
+        """
+        # Check if we actually need features (skip for invalid samples)
+        if self.score < 0:
+            self.features = ""
+            return
+        
         w = []
         for i in range(self.vertex_count):
             for j in range(i + 1, self.vertex_count):
@@ -180,7 +213,10 @@ class HypercubeDiameterDataPoint(DataPoint):
         if diff != 0 and (diff & (diff - 1)) == 0:  # Power of 2
             self.data[u, v] = 1
             self.data[v, u] = 1
-    
+            # ✅ FIX: Also maintain edge_list for consistency
+            if (u, v) not in self.edge_list and (v, u) not in self.edge_list:
+                self.edge_list.append((u, v))
+
     def _can_add_edge(self, u, v):
         """Check if edge (u,v) exists in original hypercube."""
         diff = u ^ v
@@ -316,13 +352,25 @@ class HypercubeDiameterDataPoint(DataPoint):
     def _batch_generate_and_score(cls, batch_size, N, process_pool=False, num_workers=1):
         """
         Generate random valid subgraphs.
-        N here represents the dimension d.
+        N here represents the dimension d (NOT vertex_count!).
+        
+        FIX: Also compute features for deduplication!
         """
         results = []
         for _ in range(batch_size):
-            dp = cls(N, init=True)
-            if dp.score >= 0:
+            dp = cls(N, init=True)  # Creates with Graham-Harary construction
+            
+            # Double-check validity and compute features
+            if dp.score >= 0 and dp.diameter == N:
+                dp.calc_features()  # ✅ CRITICAL: Compute features for deduplication!
                 results.append(dp)
+            elif dp.score < 0:
+                # Sample is invalid, try to fix with local search
+                dp.local_search(improve_with_local_search=True)
+                if dp.score >= 0:
+                    dp.calc_features()  # ✅ Also compute features for repaired samples
+                    results.append(dp)
+        
         return results
 
 
